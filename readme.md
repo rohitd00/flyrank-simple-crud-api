@@ -59,5 +59,4 @@ You can create, list, update, and delete tasks without writing any curl.
 
 ![Swagger UI](docs/swagger.png)
 
-> Add your own screenshot at `docs/swagger.png` (open `/docs`, run the full
-> CRUD cycle, and paste the capture here).
+
