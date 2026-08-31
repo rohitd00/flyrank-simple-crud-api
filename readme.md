@@ -1,11 +1,10 @@
 # Task API
 
-A small in-memory CRUD API for managing to-do tasks, built with **Node.js + Express**.
-It supports the four CRUD operations (Create, Read, Update, Delete) and ships with
+A small CRUD API for managing to-do tasks, built with **Node.js + Express**.
+It supports Create, Read, Update, and Delete operations and ships with
 **Swagger UI** for interactive, visual testing.
 
-> Data lives only in memory. Restarting the server resets the list back to the 3
-> seed tasks — that is expected (no database yet).
+Data is stored in **SQLite** (`tasks.db`), so it survives server restarts.
 
 ## Run it
 
@@ -15,6 +14,9 @@ npm run dev
 ```
 
 The server starts on `http://localhost:4000`.
+
+The first time you run it, a file called `tasks.db` is created automatically
+in the project root, and 3 example tasks are inserted.
 
 ## Endpoints
 
@@ -38,11 +40,8 @@ curl -i -X POST http://localhost:4000/tasks \
 
 ```http
 HTTP/1.1 201 Created
-X-Powered-By: Express
 Content-Type: application/json; charset=utf-8
 Content-Length: 41
-Date: Mon, 31 Aug 2026 12:00:00 GMT
-Connection: keep-alive
 
 {"id":4,"title":"Buy milk","done":false}
 ```
@@ -59,4 +58,31 @@ You can create, list, update, and delete tasks without writing any curl.
 
 ![Swagger UI](docs/swagger.png)
 
+## Database
 
+- **Database file:** `tasks.db` in the project root.
+- **Library:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — a simple, fast SQLite wrapper for Node.js.
+- **Why SQLite:** no server to install, no credentials, just a single file.
+- **Table:** `tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)`
+
+### Example SQL query
+
+List every task directly in SQLite:
+
+```sql
+SELECT id, title, done FROM tasks;
+```
+
+Or show only completed tasks:
+
+```sql
+SELECT id, title, done FROM tasks WHERE done = 1;
+```
+
+You can open `tasks.db` with any SQLite viewer (e.g. [DB Browser for SQLite](https://sqlitebrowser.org/)) and run these queries manually — the API will immediately reflect your changes.
+
+## What changed
+
+The endpoints are identical to the previous in-memory version.
+Only the storage layer changed: the API now reads from and writes to SQLite
+instead of a JavaScript array. Restarting the server no longer deletes your data.

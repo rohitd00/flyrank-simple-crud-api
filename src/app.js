@@ -1,17 +1,29 @@
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import { readFileSync } from "fs";
+import Database from "better-sqlite3";
 
 const app = express();
 const PORT = 4000;
 
-const SEED_TASKS = [
-  { id: 1, title: "Buy groceries", done: false },
-  { id: 2, title: "Walk the dog", done: true },
-  { id: 3, title: "Read a book", done: false }
-];
+const db = new Database("tasks.db");
+db.pragma("journal_mode = WAL");
 
-let tasks = [];
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY,
+    title TEXT NOT NULL,
+    done INTEGER NOT NULL DEFAULT 0
+  )
+`);
+
+const row = db.prepare("SELECT COUNT(*) as count FROM tasks").get().count;
+if (row === 0) {
+  const insert = db.prepare("INSERT INTO tasks (id, title, done) VALUES (?, ?, ?)");
+  insert.run(1, "Buy groceries", 0);
+  insert.run(2, "Walk the dog", 1);
+  insert.run(3, "Read a book", 0);
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -30,21 +42,22 @@ app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// ---- Stage 2: Read ----
+// ---- Stage 1: Read ----
 
 app.get("/tasks", (req, res) => {
+  const tasks = db.prepare("SELECT id, title, done FROM tasks").all();
   res.json(tasks);
 });
 
 app.get("/tasks/:id", (req, res) => {
-  const task = tasks.find((t) => t.id === Number(req.params.id));
+  const task = db.prepare("SELECT id, title, done FROM tasks WHERE id = ?").get(req.params.id);
   if (!task) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }
   res.json(task);
 });
 
-// ---- Stage 3: Create ----
+// ---- Stage 2: Create ----
 
 app.post("/tasks", (req, res) => {
   const { title } = req.body || {};
@@ -53,17 +66,19 @@ app.post("/tasks", (req, res) => {
     return res.status(400).json({ error: "Title is required" });
   }
 
-  const id = tasks.length ? Math.max(...tasks.map((t) => t.id)) + 1 : 1;
-  const task = { id, title: title.trim(), done: false };
-  tasks.push(task);
+  const maxRow = db.prepare("SELECT MAX(id) as maxId FROM tasks").get();
+  const id = maxRow.maxId ? maxRow.maxId + 1 : 1;
 
+  db.prepare("INSERT INTO tasks (id, title, done) VALUES (?, ?, 0)").run(id, title.trim());
+
+  const task = db.prepare("SELECT id, title, done FROM tasks WHERE id = ?").get(id);
   res.status(201).json(task);
 });
 
-// ---- Stage 4: Update & Delete ----
+// ---- Stage 3: Update & Delete ----
 
 app.put("/tasks/:id", (req, res) => {
-  const task = tasks.find((t) => t.id === Number(req.params.id));
+  const task = db.prepare("SELECT id, title, done FROM tasks WHERE id = ?").get(req.params.id);
   if (!task) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }
@@ -77,20 +92,22 @@ app.put("/tasks/:id", (req, res) => {
     if (!title || !title.trim()) {
       return res.status(400).json({ error: "Title cannot be empty" });
     }
+    db.prepare("UPDATE tasks SET title = ? WHERE id = ?").run(title.trim(), task.id);
     task.title = title.trim();
   }
-  if (done !== undefined) task.done = Boolean(done);
+  if (done !== undefined) {
+    db.prepare("UPDATE tasks SET done = ? WHERE id = ?").run(done ? 1 : 0, task.id);
+    task.done = done;
+  }
 
   res.json(task);
 });
 
 app.delete("/tasks/:id", (req, res) => {
-  const index = tasks.findIndex((t) => t.id === Number(req.params.id));
-  if (index === -1) {
+  const result = db.prepare("DELETE FROM tasks WHERE id = ?").run(req.params.id);
+  if (result.changes === 0) {
     return res.status(404).json({ error: `Task ${req.params.id} not found` });
   }
-
-  tasks.splice(index, 1);
   res.status(204).send();
 });
 
@@ -102,7 +119,6 @@ const swaggerDocument = JSON.parse(
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.listen(PORT, () => {
-  tasks = SEED_TASKS;
   console.log(`listening at http://localhost:${PORT}`);
   console.log(`swagger at http://localhost:${PORT}/docs`);
 });
