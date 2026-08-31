@@ -1,70 +1,108 @@
 import express from "express";
+import swaggerUi from "swagger-ui-express";
+import { readFileSync } from "fs";
 
 const app = express();
-const PORT = 4000
+const PORT = 4000;
 
-const SEED_TASK = [
-  { "id": 1, "title": "Buy groceries", "done": false },
-  { "id": 2, "title": "Walk the dog", "done": true },
-  { "id": 3, "title": "Read a book", "done": false }
-]
+const SEED_TASKS = [
+  { id: 1, title: "Buy groceries", done: false },
+  { id: 2, title: "Walk the dog", done: true },
+  { id: 3, title: "Read a book", done: false }
+];
 
-let tasks = []
-
+let tasks = [];
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use((req, res, next) => {
-    console.log(`${req.method} ${req.path}`);
-    next();
-})
+  console.log(`${req.method} ${req.path}`);
+  next();
+});
 
+// ---- Stage 1: front door ----
 
-app.get('/', (req, res) => {
-    return res.json({ "name": "Task API", "version": "1.0", "endpoints": ["/tasks"] })
-})
+app.get("/", (req, res) => {
+  res.json({ name: "Task API", version: "1.0", endpoints: ["/tasks"] });
+});
 
-app.get('/health', (req,res) => {
-    return res.json({"status" : "ok"})
-})
+app.get("/health", (req, res) => {
+  res.json({ status: "ok" });
+});
 
-app.get('/tasks', (req, res) => {
-    return res.send(tasks);
-})
+// ---- Stage 2: Read ----
 
-app.get('/tasks/:id', (req, res) => {
-    let {id} = req.params;
+app.get("/tasks", (req, res) => {
+  res.json(tasks);
+});
 
-    const task = tasks.find(item => item.id == id);
-    if (!task) {
-        return res.status(404).send("Task not found");
+app.get("/tasks/:id", (req, res) => {
+  const task = tasks.find((t) => t.id === Number(req.params.id));
+  if (!task) {
+    return res.status(404).json({ error: `Task ${req.params.id} not found` });
+  }
+  res.json(task);
+});
+
+// ---- Stage 3: Create ----
+
+app.post("/tasks", (req, res) => {
+  const { title } = req.body || {};
+
+  if (!title || !title.trim()) {
+    return res.status(400).json({ error: "Title is required" });
+  }
+
+  const id = tasks.length ? Math.max(...tasks.map((t) => t.id)) + 1 : 1;
+  const task = { id, title: title.trim(), done: false };
+  tasks.push(task);
+
+  res.status(201).json(task);
+});
+
+// ---- Stage 4: Update & Delete ----
+
+app.put("/tasks/:id", (req, res) => {
+  const task = tasks.find((t) => t.id === Number(req.params.id));
+  if (!task) {
+    return res.status(404).json({ error: `Task ${req.params.id} not found` });
+  }
+
+  const { title, done } = req.body || {};
+  if (title === undefined && done === undefined) {
+    return res.status(400).json({ error: "Provide title or done to update" });
+  }
+
+  if (title !== undefined) {
+    if (!title || !title.trim()) {
+      return res.status(400).json({ error: "Title cannot be empty" });
     }
+    task.title = title.trim();
+  }
+  if (done !== undefined) task.done = Boolean(done);
 
-    return res.status(200).json({ item: task });
-})
+  res.json(task);
+});
 
-app.post('/tasks', (req,res) => {
-    let {id, title, done} = req.body;
+app.delete("/tasks/:id", (req, res) => {
+  const index = tasks.findIndex((t) => t.id === Number(req.params.id));
+  if (index === -1) {
+    return res.status(404).json({ error: `Task ${req.params.id} not found` });
+  }
 
-    if(!title) {
-        return res.status(404).json({ error: "Task name not found" });
-    }
+  tasks.splice(index, 1);
+  res.status(204).send();
+});
 
-    if(done === '' || !done) {
-        done = false;
-    }
+// ---- Stage 5: Swagger UI ----
 
-    id = tasks.length + 1
-
-    tasks.push({"id" : id, "title": title, "done" : done});
-
-    return res.status(500).send("task added success");
-
-})
-
-
+const swaggerDocument = JSON.parse(
+  readFileSync(new URL("./openapi.json", import.meta.url))
+);
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
 app.listen(PORT, () => {
-    console.log(`listening at http://localhost:${PORT}`);
-    tasks = SEED_TASK;
-})
+  tasks = SEED_TASKS;
+  console.log(`listening at http://localhost:${PORT}`);
+  console.log(`swagger at http://localhost:${PORT}/docs`);
+});
