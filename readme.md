@@ -29,6 +29,10 @@ in the project root, and 3 example tasks are inserted.
 | POST   | `/tasks`      | `{ "title": "..." }`| 201/400 | Create a task          |
 | PUT    | `/tasks/:id`  | `{ "title?", "done?" }` | 200/400/404 | Update a task  |
 | DELETE | `/tasks/:id`  | —                   | 204/404 | Delete a task          |
+| GET    | `/tasks`      | `?done=true`        | 200     | Filter by done status  |
+| GET    | `/tasks`      | `?search=milk`      | 200     | Search by title        |
+| GET    | `/stats`      | —                   | 200     | Get task statistics    |
+| POST   | `/reset`      | —                   | 201     | Reset to seed data     |
 
 ## Example request & response
 
@@ -80,6 +84,45 @@ SELECT id, title, done FROM tasks WHERE done = 1;
 ```
 
 You can open `tasks.db` with any SQLite viewer (e.g. [DB Browser for SQLite](https://sqlitebrowser.org/)) and run these queries manually — the API will immediately reflect your changes.
+
+## Extras
+
+### Filtering and search
+
+```bash
+# Only completed tasks
+curl http://localhost:4000/tasks?done=true
+
+# Search by title
+curl "http://localhost:4000/tasks?search=milk"
+```
+
+### Statistics
+
+```bash
+curl http://localhost:4000/stats
+```
+
+Response:
+
+```json
+{ "total": 3, "done": 1, "open": 2 }
+```
+
+### Reset to seed data
+
+```bash
+curl -X POST http://localhost:4000/reset
+```
+
+This deletes all tasks and restores the original 3 example tasks.
+
+### The mortality experiment
+
+Data is stored in `tasks.db` and survives server restarts.
+Create a few tasks, stop the server (`Ctrl + C`), start it again with `npm run dev`,
+and run `GET /tasks` — your data is still there.
+That is the difference between memory and a database.
 
 ## What changed
 

@@ -44,9 +44,45 @@ app.get("/health", (req, res) => {
 
 // ---- Stage 1: Read ----
 
+// ---- Extras: query params, stats, reset ----
+
 app.get("/tasks", (req, res) => {
-  const tasks = db.prepare("SELECT id, title, done FROM tasks").all();
+  const { done, search } = req.query;
+  let sql = "SELECT id, title, done FROM tasks";
+  const params = [];
+
+  if (done !== undefined) {
+    sql += " WHERE done = ?";
+    params.push(done === "true" ? 1 : 0);
+  }
+
+  if (search !== undefined) {
+    const searchTerm = `%${String(search)}%`;
+    if (params.length > 0) {
+      sql += " AND title LIKE ?";
+    } else {
+      sql += " WHERE title LIKE ?";
+    }
+    params.push(searchTerm);
+  }
+
+  const tasks = db.prepare(sql).all(...params);
   res.json(tasks);
+});
+
+app.get("/stats", (req, res) => {
+  const total = db.prepare("SELECT COUNT(*) as count FROM tasks").get().count;
+  const done = db.prepare("SELECT COUNT(*) as count FROM tasks WHERE done = 1").get().count;
+  res.json({ total, done, open: total - done });
+});
+
+app.post("/reset", (req, res) => {
+  db.exec("DELETE FROM tasks");
+  const insert = db.prepare("INSERT INTO tasks (id, title, done) VALUES (?, ?, ?)");
+  insert.run(1, "Buy groceries", 0);
+  insert.run(2, "Walk the dog", 1);
+  insert.run(3, "Read a book", 0);
+  res.status(201).json({ message: "Tasks reset to defaults" });
 });
 
 app.get("/tasks/:id", (req, res) => {

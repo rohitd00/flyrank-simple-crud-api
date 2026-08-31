@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0",
-    "description": "A simple in-memory CRUD API for managing to-do tasks."
+    "description": "A simple CRUD API for managing to-do tasks, backed by SQLite."
   },
   "servers": [
     { "url": "http://localhost:4000" }
@@ -40,6 +40,10 @@
     "/tasks": {
       "get": {
         "summary": "List all tasks",
+        "parameters": [
+          { "name": "done", "in": "query", "schema": { "type": "boolean" }, "description": "Filter by completion status" },
+          { "name": "search", "in": "query", "schema": { "type": "string" }, "description": "Search by title (case-insensitive)" }
+        ],
         "responses": {
           "200": {
             "description": "Array of tasks",
@@ -112,6 +116,36 @@
         "responses": {
           "204": { "description": "Deleted (no content)" },
           "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/stats": {
+      "get": {
+        "summary": "Task statistics",
+        "responses": {
+          "200": {
+            "description": "Task counts",
+            "content": {
+              "application/json": {
+                "example": { "total": 3, "done": 1, "open": 2 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reset": {
+      "post": {
+        "summary": "Reset tasks to default seed data",
+        "responses": {
+          "201": {
+            "description": "Reset successful",
+            "content": {
+              "application/json": {
+                "example": { "message": "Tasks reset to defaults" }
+              }
+            }
+          }
         }
       }
     }
