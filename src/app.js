@@ -9,6 +9,8 @@ import { requireAuth } from "./middleware/auth.js";
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+app.use(express.static("public"));
+
 let supabase = null;
 if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
   supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
