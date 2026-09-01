@@ -2,19 +2,16 @@ import "dotenv/config";
 import express from "express";
 import swaggerUi from "swagger-ui-express";
 import { readFileSync } from "fs";
+import { fileURLToPath } from "url";
+import { dirname, join } from "path";
 import repo from "./repo/index.js";
 import { createClient } from "@supabase/supabase-js";
 import { requireAuth } from "./middleware/auth.js";
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
 const app = express();
 const PORT = process.env.PORT || 4000;
-
-app.use(express.static("public"));
-
-let supabase = null;
-if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
-  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
-}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -23,9 +20,19 @@ app.use((req, res, next) => {
   next();
 });
 
+app.use(express.static(join(__dirname, "..", "public"), { index: false }));
+
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+}
+
 // ---- Stage 1: front door ----
 
 app.get("/", (req, res) => {
+  if (req.accepts("html")) {
+    return res.sendFile(join(__dirname, "..", "public", "index.html"));
+  }
   res.json({ name: "TaskFlow", version: "1.0.0", endpoints: ["/tasks", "/auth"] });
 });
 
