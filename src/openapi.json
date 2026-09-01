@@ -3,7 +3,7 @@
   "info": {
     "title": "Task API",
     "version": "1.0",
-    "description": "A simple CRUD API for managing to-do tasks, backed by SQLite."
+    "description": "A simple CRUD API for managing to-do tasks. Storage can be SQLite (default) or PostgreSQL via DATABASE_URL."
   },
   "servers": [
     { "url": "http://localhost:4000" }

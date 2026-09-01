@@ -4,9 +4,12 @@ A small CRUD API for managing to-do tasks, built with **Node.js + Express**.
 It supports Create, Read, Update, and Delete operations and ships with
 **Swagger UI** for interactive, visual testing.
 
-Data is stored in **SQLite** (`tasks.db`), so it survives server restarts.
+Data is stored in **SQLite** by default, or **PostgreSQL** when `DATABASE_URL` is set.
+Both survive server restarts.
 
 ## Run it
+
+### Option A: Local (SQLite)
 
 ```bash
 npm install
@@ -15,8 +18,14 @@ npm run dev
 
 The server starts on `http://localhost:4000`.
 
-The first time you run it, a file called `tasks.db` is created automatically
-in the project root, and 3 example tasks are inserted.
+### Option B: Docker (PostgreSQL)
+
+```bash
+cp .env.example .env
+docker compose up
+```
+
+The whole stack (app + Postgres) starts with one command.
 
 ## Endpoints
 
@@ -62,70 +71,69 @@ You can create, list, update, and delete tasks without writing any curl.
 
 ![Swagger UI](docs/swagger.png)
 
-## Database
+## Storage
+
+This project has swapped storage three times:
+
+| Assignment | Storage | How to run |
+|------------|---------|------------|
+| A1 | In-memory array | `node src/app.js` |
+| A2 | SQLite file (`tasks.db`) | `npm run dev` |
+| A3 (this) | PostgreSQL in Docker | `docker compose up` |
+
+The routes and request/response shapes are identical across all three.
+Only the storage layer changed — that's the point.
+
+### Local (SQLite)
 
 - **Database file:** `tasks.db` in the project root.
-- **Library:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3) — a simple, fast SQLite wrapper for Node.js.
-- **Why SQLite:** no server to install, no credentials, just a single file.
-- **Table:** `tasks(id INTEGER PRIMARY KEY, title TEXT NOT NULL, done INTEGER NOT NULL DEFAULT 0)`
+- **Library:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
 
-### Example SQL query
+### Docker (PostgreSQL)
 
-List every task directly in SQLite:
+- **Image:** `postgres:16-alpine`
+- **Volume:** `taskdata` mounted at `/var/lib/postgresql/data`
+- **Connection:** `postgres://postgres:dev@db:5432/tasks` (inside compose network)
+- **Init script:** `init.sql` creates the `tasks` table and seeds 3 rows
 
-```sql
-SELECT id, title, done FROM tasks;
-```
+## Environment variables
 
-Or show only completed tasks:
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | _(none)_ | Postgres connection string. When set, the app uses Postgres; otherwise it falls back to SQLite. |
+| `PORT` | `4000` | Server port |
 
-```sql
-SELECT id, title, done FROM tasks WHERE done = 1;
-```
+A `.env` file is git-ignored. Copy `.env.example` to `.env` and fill in your values.
 
-You can open `tasks.db` with any SQLite viewer (e.g. [DB Browser for SQLite](https://sqlitebrowser.org/)) and run these queries manually — the API will immediately reflect your changes.
+## Database viewer
 
-## Extras
+Open `tasks.db` with [DB Browser for SQLite](https://sqlitebrowser.org/) (local),
+or connect to `localhost:5432` with any Postgres client (Docker mode).
 
-### Filtering and search
+## Persistence proof
 
-```bash
-# Only completed tasks
-curl http://localhost:4000/tasks?done=true
-
-# Search by title
-curl "http://localhost:4000/tasks?search=milk"
-```
-
-### Statistics
+With Docker:
 
 ```bash
-curl http://localhost:4000/stats
+# Create a few tasks via curl or Swagger
+curl http://localhost:4000/tasks
+
+# Restart the whole stack
+docker compose down
+docker compose up
+
+# Data is still there
+curl http://localhost:4000/tasks
 ```
 
-Response:
-
-```json
-{ "total": 3, "done": 1, "open": 2 }
-```
-
-### Reset to seed data
-
-```bash
-curl -X POST http://localhost:4000/reset
-```
-
-This deletes all tasks and restores the original 3 example tasks.
-
-### The mortality experiment
-
-Data is stored in `tasks.db` and survives server restarts.
-Create a few tasks, stop the server (`Ctrl + C`), start it again with `npm run dev`,
-and run `GET /tasks` — your data is still there.
-That is the difference between memory and a database.
+The `taskdata` volume keeps the Postgres rows across container restarts.
 
 ## What changed
 
-The endpoints are identical to the previous in-memory version.
-Only the storage layer changed: the API now reads from and writes to SQLite
-instead of a JavaScript array. Restarting the server no longer deletes your data.
+The endpoints are identical to A1 and A2.
+The storage layer is now swappable via `DATABASE_URL`:
+- No env var → SQLite file on disk.
+- Env var set → PostgreSQL in Docker.
+
+Only `src/repo/` and the infrastructure files changed.
+Your routes in `src/app.js` did not.

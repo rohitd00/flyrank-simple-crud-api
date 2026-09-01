@@ -1,0 +1,26 @@
+services:
+  api:
+    build: .
+    ports:
+      - "4000:4000"
+    environment:
+      DATABASE_URL: postgres://postgres:dev@db:5432/tasks
+      PORT: 4000
+    depends_on:
+      - db
+    volumes:
+      - ./src:/app/src
+
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_PASSWORD: dev
+      POSTGRES_DB: tasks
+    volumes:
+      - taskdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+volumes:
+  taskdata:
