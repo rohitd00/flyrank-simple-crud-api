@@ -1,15 +1,13 @@
-# Task API
+# TaskFlow API
 
-A small CRUD API for managing to-do tasks, built with **Node.js + Express**.
-It supports Create, Read, Update, and Delete operations and ships with
-**Swagger UI** for interactive, visual testing.
+A lightweight productivity web service with task management and **Supabase Auth**.
+Guest users can explore public endpoints; registered users get a private space
+to manage their daily tasks.
 
-Data is stored in **SQLite** by default, or **PostgreSQL** when `DATABASE_URL` is set.
-Both survive server restarts.
+Built with **Node.js + Express**. Data is stored in **SQLite** by default, or
+**PostgreSQL** when `DATABASE_URL` is set. Both survive server restarts.
 
 ## Run it
-
-### Option A: Local (SQLite)
 
 ```bash
 npm install
@@ -18,32 +16,87 @@ npm run dev
 
 The server starts on `http://localhost:4000`.
 
-### Option B: Docker (PostgreSQL)
+## Supabase setup (required for auth)
 
-```bash
-cp .env.example .env
-docker compose up
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the dashboard, go to **Project Settings → API** and copy your **Project URL** and **anon key**.
+3. Add them to your `.env`:
+
+```dotenv
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_KEY=your-anon-key
 ```
 
-The whole stack (app + Postgres) starts with one command.
+4. In **Authentication → Sign In / Providers → Email**, turn **Confirm email** off
+   (so signups work immediately in this practice project).
 
 ## Endpoints
+
+### Public
 
 | Method | Path          | Body                | Success | Meaning                |
 |--------|---------------|---------------------|---------|------------------------|
 | GET    | `/`           | —                   | 200     | API info               |
 | GET    | `/health`     | —                   | 200     | Health check           |
+| GET    | `/public/info`| —                   | 200     | Public app info        |
+
+### Auth
+
+| Method | Path          | Body                | Success | Meaning                |
+|--------|---------------|---------------------|---------|------------------------|
+| POST   | `/auth/signup`| `{ "email", "password" }` | 201/400 | Create account |
+| POST   | `/auth/login` | `{ "email", "password" }` | 200/400/401 | Login, returns JWT |
+| POST   | `/auth/logout`| —                   | 204/401 | End session            |
+
+### Protected (requires `Authorization: Bearer <token>`)
+
+| Method | Path               | Success | Meaning                |
+|--------|--------------------|---------|------------------------|
+| GET    | `/protected/profile` | 200/401 | Current user profile   |
+| GET    | `/protected/dashboard`| 200/401 | User dashboard         |
+
+### Tasks
+
+| Method | Path          | Body                | Success | Meaning                |
+|--------|---------------|---------------------|---------|------------------------|
 | GET    | `/tasks`      | —                   | 200     | List all tasks         |
 | GET    | `/tasks/:id`  | —                   | 200/404 | Get one task           |
 | POST   | `/tasks`      | `{ "title": "..." }`| 201/400 | Create a task          |
-| PUT    | `/tasks/:id`  | `{ "title?", "done?" }` | 200/400/404 | Update a task  |
+| PUT    | `/tasks/:id`  | `{ "title?", "done?" }` | 200/400/404 | Update a task |
 | DELETE | `/tasks/:id`  | —                   | 204/404 | Delete a task          |
 | GET    | `/tasks`      | `?done=true`        | 200     | Filter by done status  |
 | GET    | `/tasks`      | `?search=milk`      | 200     | Search by title        |
 | GET    | `/stats`      | —                   | 200     | Get task statistics    |
 | POST   | `/reset`      | —                   | 201     | Reset to seed data     |
 
-## Example request & response
+## Example requests
+
+### Sign up
+
+```bash
+curl -i -X POST http://localhost:4000/auth/signup \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+### Log in
+
+```bash
+curl -i -X POST http://localhost:4000/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"password123"}'
+```
+
+Returns `access_token` and `refresh_token`.
+
+### Call a protected route
+
+```bash
+curl -i http://localhost:4000/protected/profile \
+  -H "Authorization: Bearer <PASTE_ACCESS_TOKEN>"
+```
+
+### Create a task
 
 ```bash
 curl -i -X POST http://localhost:4000/tasks \
@@ -51,89 +104,66 @@ curl -i -X POST http://localhost:4000/tasks \
   -d '{"title":"Buy milk"}'
 ```
 
-```http
-HTTP/1.1 201 Created
-Content-Type: application/json; charset=utf-8
-Content-Length: 41
-
-{"id":4,"title":"Buy milk","done":false}
-```
-
-> Tip: if you are on Windows PowerShell, the single quotes around the JSON body
-> can get mangled. Use Git Bash, WSL, or the **Swagger UI** below instead.
-
 ## Swagger UI
 
 Open **`http://localhost:4000/docs`** in your browser.
 
-Every endpoint is listed with a **Try it out** button that sends real requests.
-You can create, list, update, and delete tasks without writing any curl.
+- Public endpoints are open.
+- Protected endpoints show a **lock icon**.
+- Click **Authorize**, paste your JWT access token, then use **Try it out**.
 
 ![Swagger UI](docs/swagger.png)
 
-## Storage
+## Authentication flow
 
-This project has swapped storage three times:
+1. **Sign up** — client sends email + password to Supabase.
+2. **Log in** — Supabase returns a short-lived JWT (`access_token`) and a longer-lived `refresh_token`.
+3. **Protected requests** — client sends `Authorization: Bearer <access_token>`.
+4. **Verification** — the middleware calls `supabase.auth.getUser(token)` to verify the token is real.
+5. **Log out** — calls `supabase.auth.signOut()` and returns 204.
+
+### Status codes
+
+| Code | Meaning |
+|------|---------|
+| 201 | Account created |
+| 200 | Login successful / protected data returned |
+| 204 | Logged out / deleted |
+| 400 | Missing or invalid input |
+| 401 | Missing, malformed, or invalid/expired token |
+| 404 | Task not found |
+
+### 401 vs 403
+
+- **401 Unauthorized** = "I don't know who you are" (no token or bad token).
+- **403 Forbidden** = "I know who you are, but you may not" (authenticated but not allowed).
+
+## Storage
 
 | Assignment | Storage | How to run |
 |------------|---------|------------|
 | A1 | In-memory array | `node src/app.js` |
 | A2 | SQLite file (`tasks.db`) | `npm run dev` |
-| A3 (this) | PostgreSQL in Docker | `docker compose up` |
-
-The routes and request/response shapes are identical across all three.
-Only the storage layer changed — that's the point.
-
-### Local (SQLite)
-
-- **Database file:** `tasks.db` in the project root.
-- **Library:** [better-sqlite3](https://github.com/WiseLibs/better-sqlite3)
-
-### Docker (PostgreSQL)
-
-- **Image:** `postgres:16-alpine`
-- **Volume:** `taskdata` mounted at `/var/lib/postgresql/data`
-- **Connection:** `postgres://postgres:dev@db:5432/tasks` (inside compose network)
-- **Init script:** `init.sql` creates the `tasks` table and seeds 3 rows
+| A3 | PostgreSQL in Docker | `docker compose up` |
+| A4 (this) | Same as above + Supabase Auth | `npm run dev` |
 
 ## Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | _(none)_ | Postgres connection string. When set, the app uses Postgres; otherwise it falls back to SQLite. |
+| `SUPABASE_URL` | _(none)_ | Your Supabase project URL |
+| `SUPABASE_KEY` | _(none)_ | Your Supabase anon key (public, safe for the app) |
+| `DATABASE_URL` | _(none)_ | Postgres connection string. When set, the app uses Postgres; otherwise SQLite. |
 | `PORT` | `4000` | Server port |
 
-A `.env` file is git-ignored. Copy `.env.example` to `.env` and fill in your values.
-
-## Database viewer
-
-Open `tasks.db` with [DB Browser for SQLite](https://sqlitebrowser.org/) (local),
-or connect to `localhost:5432` with any Postgres client (Docker mode).
-
-## Persistence proof
-
-With Docker:
-
-```bash
-# Create a few tasks via curl or Swagger
-curl http://localhost:4000/tasks
-
-# Restart the whole stack
-docker compose down
-docker compose up
-
-# Data is still there
-curl http://localhost:4000/tasks
-```
-
-The `taskdata` volume keeps the Postgres rows across container restarts.
+`.env` is git-ignored. Copy `.env.example` to `.env` and fill in your values.
 
 ## What changed
 
-The endpoints are identical to A1 and A2.
-The storage layer is now swappable via `DATABASE_URL`:
-- No env var → SQLite file on disk.
-- Env var set → PostgreSQL in Docker.
+The task CRUD endpoints are identical to A1/A2/A3.
+The auth layer is new:
+- `src/middleware/auth.js` — reusable auth guard
+- `src/app.js` — auth routes and protected task routes
+- `src/openapi.json` — bearer security scheme for Swagger
 
-Only `src/repo/` and the infrastructure files changed.
-Your routes in `src/app.js` did not.
+Your storage layer did not change. This is the same repo growing.

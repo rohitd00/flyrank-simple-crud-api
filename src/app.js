@@ -3,9 +3,16 @@ import express from "express";
 import swaggerUi from "swagger-ui-express";
 import { readFileSync } from "fs";
 import repo from "./repo/index.js";
+import { createClient } from "@supabase/supabase-js";
+import { requireAuth } from "./middleware/auth.js";
 
 const app = express();
 const PORT = process.env.PORT || 4000;
+
+let supabase = null;
+if (process.env.SUPABASE_URL && process.env.SUPABASE_KEY) {
+  supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+}
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -14,8 +21,10 @@ app.use((req, res, next) => {
   next();
 });
 
+// ---- Stage 1: front door ----
+
 app.get("/", (req, res) => {
-  res.json({ name: "Task API", version: "1.0", endpoints: ["/tasks"] });
+  res.json({ name: "TaskFlow", version: "1.0.0", endpoints: ["/tasks", "/auth"] });
 });
 
 app.get("/health", async (req, res) => {
@@ -26,6 +35,97 @@ app.get("/health", async (req, res) => {
     res.status(500).json({ status: "error", db: "down" });
   }
 });
+
+// ---- Auth routes ----
+
+app.post("/auth/signup", async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase is not configured. Set SUPABASE_URL and SUPABASE_KEY in .env" });
+  }
+
+  const { email, password } = req.body || {};
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  const { data, error } = await supabase.auth.signUp({ email, password });
+
+  if (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  res.status(201).json({ user: data.user });
+});
+
+app.post("/auth/login", async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase is not configured. Set SUPABASE_URL and SUPABASE_KEY in .env" });
+  }
+
+  const { email, password } = req.body || {};
+
+  if (!email || !password) {
+    return res.status(400).json({ error: "Email and password are required" });
+  }
+
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    return res.status(401).json({ error: "Invalid login credentials" });
+  }
+
+  res.json({
+    access_token: data.session.access_token,
+    refresh_token: data.session.refresh_token
+  });
+});
+
+app.post("/auth/logout", requireAuth, async (req, res) => {
+  if (!supabase) {
+    return res.status(500).json({ error: "Supabase is not configured" });
+  }
+  await supabase.auth.signOut();
+  res.status(204).send();
+});
+
+// ---- Public route ----
+
+app.get("/public/info", (req, res) => {
+  res.json({
+    appName: "TaskFlow",
+    version: "1.0.0",
+    message: "Welcome to TaskFlow! Sign up to organize your daily tasks.",
+    totalUsers: 1250
+  });
+});
+
+// ---- Protected routes ----
+
+app.get("/protected/profile", requireAuth, (req, res) => {
+  res.json({
+    id: req.user.id,
+    email: req.user.email,
+    created_at: req.user.created_at,
+    profile: {
+      theme: "dark",
+      pendingTasks: 4
+    }
+  });
+});
+
+app.get("/protected/dashboard", requireAuth, (req, res) => {
+  res.json({
+    userId: req.user.id,
+    message: "This is your private dashboard",
+    stats: {
+      tasksCompleted: 12,
+      currentStreak: 3
+    }
+  });
+});
+
+// ---- Task CRUD routes ----
 
 app.get("/tasks", async (req, res) => {
   res.json(await repo.findAll(req.query));
